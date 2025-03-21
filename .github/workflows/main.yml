@@ -157,16 +157,29 @@ jobs:
           echo "Servicios iniciados..."
           echo "Verificando estado de los contenedores..."
           docker compose ps
+          docker ps -a
           if docker ps -a --format '{{.Names}}' | grep -q "^mysql$"; then
+            if ! docker ps --format '{{.Names}} {{.Status}}' | grep "^mysql" | grep -q "Up"; then
+              echo "Contenedor mysql no está en ejecución. Mostrando logs..."
+              docker compose logs mysql
+              exit 1
+            fi
             if ! docker ps --format '{{.Names}} {{.Status}}' | grep "^mysql" | grep -q "healthy"; then
               echo "Contenedor mysql no está en estado healthy. Mostrando logs..."
               docker compose logs mysql
+              exit 1
             fi
           else
             echo "Usando nombre de contenedor final-mysql-1..."
+            if ! docker ps --format '{{.Names}} {{.Status}}' | grep "final-mysql-1" | grep -q "Up"; then
+              echo "Contenedor final-mysql-1 no está en ejecución. Mostrando logs..."
+              docker compose logs mysql
+              exit 1
+            fi
             if ! docker ps --format '{{.Names}} {{.Status}}' | grep "final-mysql-1" | grep -q "healthy"; then
               echo "Contenedor final-mysql-1 no está en estado healthy. Mostrando logs..."
               docker compose logs mysql
+              exit 1
             fi
           fi
 

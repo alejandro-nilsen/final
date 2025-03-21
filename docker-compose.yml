@@ -10,16 +10,17 @@ services:
       MYSQL_USER: user
       MYSQL_PASSWORD: userpassword
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uuser", "-puserpassword"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uuser", "--password=userpassword"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 30s  # Dar más tiempo para que MySQL se inicie
 
   api:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: api  
+    container_name: api
     ports:
       - "3000:3000"
     depends_on:
