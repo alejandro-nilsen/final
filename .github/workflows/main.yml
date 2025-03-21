@@ -98,17 +98,20 @@ jobs:
           for i in {1..5}; do
             if docker exec api curl -s http://localhost:3000 > api_result.txt 2>/dev/null; then
               echo "API respondió correctamente"
+              echo "Timestamp: $(date)" >> api_result.txt
               cat api_result.txt
               break
             else
               echo "Intento $i/5 falló, generando archivo de error..."
               echo "Error: No se pudo conectar a la API en el intento $i" > api_result.txt
+              echo "Timestamp: $(date)" >> api_result.txt
             fi
             echo "Esperando respuesta de la API... intento $i/5"
             sleep 10
           done
           if [ ! -f "api_result.txt" ]; then
             echo "Error: No se pudo crear api_result.txt" > api_result.txt
+            echo "Timestamp: $(date)" >> api_result.txt
             echo "Forzando creación de archivo con error"
           fi
 
@@ -118,8 +121,8 @@ jobs:
           ls -la
           cat api_result.txt
           git add api_result.txt
-          git commit -m "Guardar resultado de la API desde Job 1"
-          git push
+          git commit -m "Guardar resultado de la API desde Job 1" || echo "No hay cambios para commitear, continuando..."
+          git push || echo "No hay cambios para pushear, continuando..."
 
   job_2_mysql:
     name: Job 2 - Verificar MySQL
