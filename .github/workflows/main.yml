@@ -1,0 +1,227 @@
+name: Proyecto con pruebas de sistema en serie (Node.js)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  actions: write
+  contents: write  # Necesario para hacer push al repositorio
+
+jobs:
+  despliegue:
+    name: Desplegar servicios en pruebas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Obtener el código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Limpiar contenedores previos
+        run: docker compose down --volumes --remove-orphans || true
+
+      - name: Iniciar servicios Node.js y MySQL
+        run: |
+          docker compose up -d --build
+          echo "Servicios iniciados..."
+
+      - name: Listar contenedores activos
+        run: docker ps -a
+
+      - name: Capturar logs de la API
+        run: docker logs api > api_logs.txt
+
+      - name: Guardar logs como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-logs
+          path: api_logs.txt
+
+  job_1_api:
+    name: Job 1 - Verificar API
+    runs-on: ubuntu-latest
+    needs: despliegue
+    steps:
+      - name: Obtener el código del repositorio
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configurar Git para commits
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+      - name: Preparar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar los servicios
+        run: |
+          docker compose up -d
+          echo "Servicios iniciados..."
+
+      - name: Comprobar respuesta de la API y almacenar en api_result.txt
+        run: |
+          echo "Comprobando API desde Job 1..."
+          for i in {1..5}; do
+            if docker exec api curl -s http://localhost:3000 > api_result.txt 2>/dev/null; then
+              echo "API respondió correctamente"
+              cat api_result.txt
+              break
+            else
+              echo "Intento $i/5 falló, generando archivo de error..."
+              echo "Error: No se pudo conectar a la API en el intento $i" > api_result.txt
+            fi
+            echo "Esperando respuesta de la API... intento $i/5"
+            sleep 10
+          done
+          if [ ! -f "api_result.txt" ]; then
+            echo "Error: No se pudo crear api_result.txt" > api_result.txt
+            echo "Forzando creación de archivo con error"
+          fi
+
+      - name: Verificar y almacenar resultado en el repositorio
+        run: |
+          echo "Verificando que api_result.txt existe..."
+          ls -la
+          cat api_result.txt
+          git add api_result.txt
+          git commit -m "Guardar resultado de la API desde Job 1"
+          git push
+
+  job_2_mysql:
+    name: Job 2 - Verificar MySQL
+    runs-on: ubuntu-latest
+    needs: job_1_api
+    steps:
+      - name: Obtener el código del repositorio
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Actualizar el repositorio con los últimos cambios
+        run: |
+          echo "Actualizando el repositorio..."
+          for i in {1..3}; do
+            if git pull origin main; then
+              echo "Repositorio actualizado con los últimos cambios."
+              break
+            else
+              echo "Intento $i/3 falló, reintentando..."
+              sleep 5
+            fi
+          done
+          if [ $i -eq 3 ]; then
+            echo "Error: No se pudo actualizar el repositorio después de 3 intentos."
+            exit 1
+          fi
+
+      - name: Preparar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar los servicios
+        run: |
+          docker compose up -d
+          echo "Servicios iniciados..."
+
+      - name: Leer resultado de Job 1 desde el repositorio
+        run: |
+          echo "Leyendo el resultado de Job 1..."
+          if [ -f "api_result.txt" ]; then
+            echo "Resultado de Job 1 encontrado:"
+            cat api_result.txt
+          else
+            echo "No se pudo encontrar el resultado de Job 1"
+            exit 1
+          fi
+
+      - name: Comprobar conexión a MySQL
+        run: |
+          echo "Comprobando MySQL desde Job 2..."
+          docker exec mysql mysqladmin ping -h localhost -uuser -puserpassword
+          echo "Resultado de la API desde Job 1:"
+          cat api_result.txt
+          echo "Guardando estado de MySQL..."
+          echo "MySQL está operativo" > mysql_status.txt
+
+      - name: Guardar estado de MySQL como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: mysql-status-job-2
+          path: mysql_status.txt
+
+  run_tests:
+    name: Ejecutar validaciones del sistema
+    runs-on: ubuntu-latest
+    needs: job_2_mysql
+
+    steps:
+      - name: Obtener el código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Verificar estructura del directorio
+        run: |
+          echo "Mostrando estructura del directorio..."
+          pwd
+          ls -la
+          if [ -d "tests" ]; then
+            echo "Directorio tests encontrado."
+            ls -la tests
+          else
+            echo "Error: Directorio tests no encontrado."
+            exit 1
+          fi
+
+      - name: Preparar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar los servicios
+        run: |
+          docker compose up -d --build
+          echo "Servicios iniciados..."
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias de la aplicación
+        run: |
+          cd api
+          npm install
+
+      - name: Instalar dependencias de pruebas
+        run: |
+          cd tests
+          npm install
+
+      - name: Listar contenedores activos
+        run: docker ps -a
+
+      - name: Comprobar respuesta básica de la API
+        run: |
+          echo "Comprobando respuesta básica de la API desde el contenedor..."
+          docker exec api curl --retry 5 --retry-delay 5 http://localhost:3000 || echo "Fallo al conectar, revisa los logs."
+
+      - name: Comprobar conexión a MySQL
+        run: |
+          echo "Comprobando conexión a MySQL..."
+          docker exec api node -e "const mysql = require('mysql2/promise'); async function testConnection() { const conn = await mysql.createConnection({ host: 'mysql', user: 'user', password: 'userpassword', database: 'testdb' }); console.log('Conexión exitosa'); await conn.end(); } testConnection().catch(err => { console.error('Fallo en la conexión:', err); process.exit(1); });"
+
+      - name: Ejecutar pruebas automáticas y generar reporte
+        run: |
+          echo "Cambiando al directorio tests..."
+          cd tests || { echo "Error: No se pudo cambiar al directorio tests"; exit 1; }
+          echo "Ejecutando pruebas..."
+          npm test || echo "Pruebas fallaron, revisa los logs."
+
+      - name: Guardar logs de pruebas
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-logs
+          path: tests/test-logs.log

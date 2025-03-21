@@ -1,0 +1,12 @@
+{
+    "name": "tests",
+    "version": "1.0.0",
+    "description": "Pruebas de sistema para la API",
+    "scripts": {
+      "test": "jest --verbose --detectOpenHandles --forceExit > test-logs.log"
+    },
+    "dependencies": {
+      "jest": "^29.7.0",
+      "supertest": "^6.3.3"
+    }
+  }
