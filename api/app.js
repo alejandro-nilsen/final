@@ -44,7 +44,7 @@ app.get('/', async (req, res) => {
   try {
     const connection = await getConnection();
     await connection.ping();
-    res.status(200).send('Estoy agarrando señal desde MySQL :!');
+    res.status(200).send('Coneccion Exitosa a MySQL');
     await connection.end();
   } catch (error) {
     res.status(500).send('Error al conectar a MySQL');
