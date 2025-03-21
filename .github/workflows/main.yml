@@ -155,6 +155,53 @@ jobs:
         run: |
           docker compose up -d
           echo "Servicios iniciados..."
+          echo "Verificando estado de los contenedores..."
+          docker compose ps
+          if docker ps -a --format '{{.Names}}' | grep -q "^mysql$"; then
+            if ! docker ps --format '{{.Names}} {{.Status}}' | grep "^mysql" | grep -q "healthy"; then
+              echo "Contenedor mysql no está en estado healthy. Mostrando logs..."
+              docker compose logs mysql
+            fi
+          else
+            echo "Usando nombre de contenedor final-mysql-1..."
+            if ! docker ps --format '{{.Names}} {{.Status}}' | grep "final-mysql-1" | grep -q "healthy"; then
+              echo "Contenedor final-mysql-1 no está en estado healthy. Mostrando logs..."
+              docker compose logs mysql
+            fi
+          fi
+
+      - name: Esperar a que MySQL esté listo
+        run: |
+          echo "Esperando a que el contenedor mysql esté listo..."
+          for i in {1..10}; do
+            if docker ps -a --format '{{.Names}}' | grep -q "^mysql$"; then
+              if docker ps --format '{{.Names}} {{.Status}}' | grep "^mysql" | grep -q "healthy"; then
+                echo "Contenedor mysql está en estado healthy."
+                break
+              fi
+            else
+              echo "Usando nombre de contenedor final-mysql-1..."
+              if docker ps --format '{{.Names}} {{.Status}}' | grep "final-mysql-1" | grep -q "healthy"; then
+                echo "Contenedor final-mysql-1 está en estado healthy."
+                break
+              fi
+            fi
+            echo "Intento $i/10: Contenedor mysql no está listo, esperando..."
+            sleep 5
+          done
+          if docker ps -a --format '{{.Names}}' | grep -q "^mysql$"; then
+            if ! docker ps --format '{{.Names}} {{.Status}}' | grep "^mysql" | grep -q "healthy"; then
+              echo "Error: Contenedor mysql no alcanzó el estado healthy después de 10 intentos."
+              docker compose logs mysql
+              exit 1
+            fi
+          else
+            if ! docker ps --format '{{.Names}} {{.Status}}' | grep "final-mysql-1" | grep -q "healthy"; then
+              echo "Error: Contenedor final-mysql-1 no alcanzó el estado healthy después de 10 intentos."
+              docker compose logs mysql
+              exit 1
+            fi
+          fi
 
       - name: Verificar nombre del contenedor mysql
         run: |
