@@ -30,10 +30,38 @@ jobs:
           echo "Servicios iniciados..."
 
       - name: Listar contenedores activos
-        run: docker ps -a
+        run: |
+          echo "Contenedores en ejecución:"
+          docker ps -a
+          echo "Detalles del servicio api:"
+          docker compose ps api || echo "Servicio api no encontrado"
+
+      - name: Verificar nombre del contenedor api
+        run: |
+          echo "Verificando nombre del contenedor..."
+          if docker ps -a --format '{{.Names}}' | grep -q "^api$"; then
+            echo "Contenedor api encontrado con el nombre correcto."
+          else
+            echo "Contenedor api no encontrado con el nombre correcto. Buscando final-api-1..."
+            if docker ps -a --format '{{.Names}}' | grep -q "final-api-1"; then
+              echo "Contenedor final-api-1 encontrado. Usando este nombre como respaldo."
+            else
+              echo "Error: No se encontró ningún contenedor (ni api ni final-api-1)."
+              docker compose logs
+              exit 1
+            fi
+          fi
 
       - name: Capturar logs de la API
-        run: docker logs api > api_logs.txt
+        run: |
+          echo "Capturando logs del contenedor..."
+          if docker ps -a --format '{{.Names}}' | grep -q "^api$"; then
+            docker logs api > api_logs.txt 2>&1
+          else
+            echo "Usando nombre de contenedor final-api-1..."
+            docker logs final-api-1 > api_logs.txt 2>&1
+          fi
+          cat api_logs.txt
 
       - name: Guardar logs como artefacto
         uses: actions/upload-artifact@v4
@@ -128,6 +156,22 @@ jobs:
           docker compose up -d
           echo "Servicios iniciados..."
 
+      - name: Verificar nombre del contenedor mysql
+        run: |
+          echo "Verificando nombre del contenedor..."
+          if docker ps -a --format '{{.Names}}' | grep -q "^mysql$"; then
+            echo "Contenedor mysql encontrado con el nombre correcto."
+          else
+            echo "Contenedor mysql no encontrado con el nombre correcto. Buscando final-mysql-1..."
+            if docker ps -a --format '{{.Names}}' | grep -q "final-mysql-1"; then
+              echo "Contenedor final-mysql-1 encontrado. Usando este nombre como respaldo."
+            else
+              echo "Error: No se encontró ningún contenedor (ni mysql ni final-mysql-1)."
+              docker compose logs
+              exit 1
+            fi
+          fi
+
       - name: Leer resultado de Job 1 desde el repositorio
         run: |
           echo "Leyendo el resultado de Job 1..."
@@ -142,7 +186,12 @@ jobs:
       - name: Comprobar conexión a MySQL
         run: |
           echo "Comprobando MySQL desde Job 2..."
-          docker exec mysql mysqladmin ping -h localhost -uuser -puserpassword
+          if docker ps -a --format '{{.Names}}' | grep -q "^mysql$"; then
+            MYSQL_PWD=userpassword docker exec mysql mysqladmin ping -h 127.0.0.1 -uuser
+          else
+            echo "Usando nombre de contenedor final-mysql-1..."
+            MYSQL_PWD=userpassword docker exec final-mysql-1 mysqladmin ping -h 127.0.0.1 -uuser
+          fi
           echo "Resultado de la API desde Job 1:"
           cat api_result.txt
           echo "Guardando estado de MySQL..."
