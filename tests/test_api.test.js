@@ -10,7 +10,7 @@ describe('API Tests', () => {
       try {
         const response = await request(API_URL).get('/');
         expect(response.status).toBe(200);
-        expect(response.text).toBe('Estoy agarrando señal desde MySQL :!');
+        expect(response.text).toBe('Coneccion Exitosa a MySQL');
         return;
       } catch (error) {
         if (attempt === 5) throw new Error(`Failed after ${attempt} attempts: ${error.message}`);
